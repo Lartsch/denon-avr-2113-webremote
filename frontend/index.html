@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1.0">
+		<title>Denon Remote</title>
+		<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%233b82f6'%3E%3Cpath d='M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z'/%3E%3C/svg%3E">
+		<script src="/frontend/tailwindcss_v3.4.17.js"></script>
+		<script src="/frontend/vue.global.prod_v3.5.35.js"></script>
+		<script defer src="/frontend/app.js"></script>
+		<style>
+			[v-cloak] { display: none !important; }
+		</style>
+		<style type="text/tailwindcss">
+			html { overflow-y: scroll; }
+			input[type=range] { accent-color: #3b82f6; }
+			.d-pad-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; width: max-content; }
+			.no-scrollbar::-webkit-scrollbar { display: none; }
+			.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+			#terminal-logs { overflow-anchor: auto; }
+			/* Custom component utilities */
+			.btn-control { @apply bg-gray-800 hover:bg-gray-700 active:scale-95 rounded-lg flex justify-center items-center shadow text-gray-300 transition-colors; }
+			.btn-media { @apply p-3 bg-gray-800 rounded-lg shadow hover:bg-gray-700 active:scale-95 flex justify-center items-center text-gray-300 transition-colors; }
+		</style>
+	</head>
+	<body class="bg-gray-950 text-gray-200 min-h-screen p-2 md:p-6 font-sans overflow-x-hidden">
+		<div id="app" v-cloak class="max-w-5xl mx-auto space-y-4 relative min-h-[calc(100vh-3rem)]">
+			<div class="flex justify-between items-center bg-gray-900 p-3 sm:p-4 rounded-xl shadow-lg border border-gray-800 relative z-[110]">
+				<div :class="['truncate mr-2 transition-opacity duration-300', !uiEnabled && 'opacity-40 pointer-events-none']">
+					<h1 class="text-lg sm:text-2xl font-bold tracking-wider text-gray-100 truncate">AVR-2113</h1>
+					<span class="flex items-center text-[10px] sm:text-xs font-medium mt-1 text-gray-400">
+					<span :class="['w-2 h-2 rounded-full mr-1.5 shadow-sm transition-colors duration-300',
+						connectionStatus === 'CONNECTED' ? (avrConnected ? 'bg-green-500 shadow-green-500/50' : 'bg-yellow-500 shadow-yellow-500/50 animate-pulse') :
+						(connectionStatus === 'RECONNECTING' ? 'bg-yellow-500 shadow-yellow-500/50 animate-pulse' : 'bg-red-500 shadow-red-500/50')]"></span>
+					{{ connectionStatus === 'CONNECTED' ? (avrConnected ? 'Connected' : 'Connecting to AVR...') : (connectionStatus === 'RECONNECTING' ? 'Reconnecting...' : 'Connecting...') }}
+					</span>
+				</div>
+				<div class="flex items-center space-x-2 sm:space-x-3 shrink-0">
+					<!-- Group Sleep and Mute to disable them together while leaving Power accessible -->
+					<div :class="['flex items-center space-x-2 sm:space-x-3 transition-opacity duration-300', !uiEnabled && 'opacity-40 pointer-events-none']">
+						<div class="flex items-center bg-gray-800 border border-gray-700 rounded-lg p-1 sm:p-2">
+							<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-4 h-4 sm:w-5 sm:h-5 text-gray-400 mr-1">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
+							</svg>
+							<select v-model="state.sleep" @change="send('SLP' + state.sleep)" class="bg-gray-800 text-white text-xs sm:text-sm font-bold outline-none cursor-pointer">
+								<option value="OFF" class="bg-gray-800 text-white">OFF</option>
+								<option value="030" class="bg-gray-800 text-white">30m</option>
+								<option value="060" class="bg-gray-800 text-white">60m</option>
+								<option value="090" class="bg-gray-800 text-white">90m</option>
+								<option value="120" class="bg-gray-800 text-white">120m</option>
+							</select>
+						</div>
+						<button @click="toggleMute" :disabled="!uiEnabled" :class="['flex items-center p-2 sm:px-4 sm:py-2.5 rounded-lg font-bold shadow-md transition', state.mute === 'ON' ? 'bg-red-600 hover:bg-red-500 text-white animate-pulse' : 'bg-gray-800 hover:bg-gray-700 text-gray-300']">
+							<svg v-if="state.mute !== 'ON'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="w-5 h-5">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14l-4.5-4.5H3V9.5h4.5L12 5zM16.5 8.5c1.333 1.778 1.333 5.222 0 7M19.5 5.5c2.667 3.556 2.667 10.444 0 14"/>
+							</svg>
+							<svg v-else xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="w-5 h-5">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M15.536 8.464l4.95 4.95m0-4.95l-4.95 4.95M12 5v14l-4.5-4.5H3V9.5h4.5L12 5z"/>
+							</svg>
+							<span class="hidden sm:inline ml-1">{{ state.mute === 'ON' ? 'MUTED' : 'MUTE' }}</span>
+						</button>
+					</div>
+					<button @click="togglePower" :class="['flex items-center p-2 sm:px-4 sm:py-2.5 rounded-lg font-bold shadow-md transition', state.power === 'ON' ? 'bg-green-600 hover:bg-green-500 text-white' : 'bg-red-700 hover:bg-red-600 text-white']">
+						<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" class="w-5 h-5">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M18.364 5.636a9 9 0 11-12.728 0M12 3v9" />
+						</svg>
+						<span class="hidden sm:inline ml-1">{{ state.power === 'ON' ? 'ON' : 'STBY' }}</span>
+					</button>
+				</div>
+			</div>
+			<div class="relative">
+				<div id="tab-container" :class="['flex space-x-2 overflow-x-auto bg-gray-900 p-2 rounded-lg border border-gray-800 no-scrollbar', !uiEnabled && 'opacity-40 pointer-events-none']">
+					<button v-for="tab in tabs" :key="tab" @click="activeTab = tab"
+						:class="['px-5 py-2.5 whitespace-nowrap rounded-md text-sm font-semibold transition flex-shrink-0', activeTab === tab ? 'bg-blue-600 text-white shadow-md' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800']">
+					{{ tab }}
+					</button>
+				</div>
+				<div :class="['space-y-4 mt-4 transition-opacity duration-300', !uiEnabled && 'opacity-40 pointer-events-none']">
+					<div v-show="activeTab === 'Main Control'" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+						<div class="bg-gray-900 p-6 rounded-xl border border-gray-800 shadow-lg flex flex-col items-center justify-center space-y-8">
+							<h2 class="text-lg font-semibold text-gray-300 border-b border-gray-800 w-full text-center pb-2">Master Volume</h2>
+							<div class="text-6xl font-mono font-bold tracking-tight" :class="state.mute === 'ON' ? 'text-red-500' : 'text-blue-400'">
+								{{ Number.isInteger(state.volume) ? state.volume + '.0' : state.volume.toFixed(1) }}
+							</div>
+							<div class="flex flex-row items-center justify-between w-full space-x-4">
+								<button @click="adjustVolume(-0.5)" class="w-14 h-14 bg-gray-800 rounded-full flex items-center justify-center shadow-md hover:bg-gray-700 active:scale-95 transition text-gray-300 shrink-0">
+									<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" class="w-8 h-8">
+										<path stroke-linecap="round" stroke-linejoin="round" d="M20 12H4"/>
+									</svg>
+								</button>
+								<input type="range" min="0" :max="state.maxVolume" step="0.5" v-model.number="state.volume" @input="onVolumeDrag" class="flex-1 h-3 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+								<button @click="adjustVolume(0.5)" class="w-14 h-14 bg-gray-800 rounded-full flex items-center justify-center shadow-md hover:bg-gray-700 active:scale-95 transition text-gray-300 shrink-0">
+									<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" class="w-8 h-8">
+										<path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+									</svg>
+								</button>
+							</div>
+							<div class="flex w-full gap-2">
+								<button @click="toggleMute" :class="['flex-1 py-4 rounded-lg font-bold shadow-md transition flex items-center justify-center text-sm tracking-widest', state.mute === 'ON' ? 'bg-red-600 animate-pulse text-white' : 'bg-gray-800 hover:bg-gray-700 text-gray-300']">
+									<svg v-if="state.mute !== 'ON'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="w-5 h-5 mr-2">
+										<path stroke-linecap="round" stroke-linejoin="round" d="M12 5v14l-4.5-4.5H3V9.5h4.5L12 5zM16.5 8.5c1.333 1.778 1.333 5.222 0 7M19.5 5.5c2.667 3.556 2.667 10.444 0 14"/>
+									</svg>
+									<svg v-else xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="w-5 h-5 mr-2">
+										<path stroke-linecap="round" stroke-linejoin="round" d="M15.536 8.464l4.95 4.95m0-4.95l-4.95 4.95M12 5v14l-4.5-4.5H3V9.5h4.5L12 5z"/>
+									</svg>
+									{{ state.mute === 'ON' ? 'MUTED' : 'MUTE' }}
+								</button>
+								<button @click="send('SIDVD')" :class="['px-5 py-4 rounded-lg font-bold shadow-md transition flex items-center justify-center text-sm tracking-widest', state.input === 'DVD' ? 'bg-blue-600 text-white' : 'bg-gray-800 hover:bg-gray-700 text-gray-300']">
+								TV
+								</button>
+							</div>
+							<div class="border-t border-gray-800 pt-4 w-full">
+								<h3 class="text-sm font-semibold text-gray-400 mb-3">Info</h3>
+								<div class="grid grid-cols-2 gap-3 text-xs">
+									<div class="bg-gray-800 rounded-lg p-3">
+										<div class="text-gray-500 font-bold mb-1">SOURCE</div>
+										<div class="text-white font-mono">{{ state.input || '---' }}</div>
+									</div>
+									<div class="bg-gray-800 rounded-lg p-3">
+										<div class="text-gray-500 font-bold mb-1">SOUND MODE</div>
+										<div class="text-blue-400 font-mono truncate">{{ state.surround || '---' }}</div>
+									</div>
+									<div class="bg-gray-800 rounded-lg p-3">
+										<div class="text-gray-500 font-bold mb-1">SIGNAL</div>
+										<div class="text-white font-mono">{{ state.signalDecode || '---' }}</div>
+									</div>
+									<div class="bg-gray-800 rounded-lg p-3">
+										<div class="text-gray-500 font-bold mb-1">DIGITAL</div>
+										<div class="text-white font-mono">{{ state.digitalDecode || '---' }}</div>
+									</div>
+								</div>
+							</div>
+						</div>
+						<div class="bg-gray-900 p-6 rounded-xl border border-gray-800 shadow-lg">
+							<div class="mb-6 border-b border-gray-800 pb-2">
+								<h2 class="text-lg font-semibold text-gray-300">Navigation & Media</h2>
+							</div>
+							<div class="flex justify-center mb-6">
+								<div class="d-pad-grid">
+									<div></div>
+									<button class="btn-control p-5" @click="send('MNCUP')" aria-label="Up">
+										<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3" class="w-6 h-6">
+											<path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7"/>
+										</svg>
+									</button>
+									<div></div>
+									<button class="btn-control p-5" @click="send('MNCLT')" aria-label="Left">
+										<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3" class="w-6 h-6">
+											<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+										</svg>
+									</button>
+									<button class="bg-blue-600 hover:bg-blue-500 active:scale-95 p-5 rounded-lg font-bold text-white shadow-lg text-sm transition-colors" @click="send('MNENT')">OK</button>
+									<button class="btn-control p-5" @click="send('MNCRT')" aria-label="Right">
+										<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3" class="w-6 h-6">
+											<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+										</svg>
+									</button>
+									<div></div>
+									<button class="btn-control p-5" @click="send('MNCDN')" aria-label="Down">
+										<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3" class="w-6 h-6">
+											<path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+										</svg>
+									</button>
+									<div></div>
+								</div>
+							</div>
+							<div class="flex flex-wrap justify-center gap-2 mb-6">
+								<button class="btn-control px-4 py-2 text-xs font-bold" @click="send('MNRTN')">BACK</button>
+								<button class="btn-control px-4 py-2 text-xs font-bold" @click="send('MNINF')">INFO</button>
+								<button class="btn-control px-4 py-2 text-xs font-bold" @click="send('MNOPT')">OPTION</button>
+								<button class="px-4 py-2 bg-indigo-700 rounded shadow hover:bg-indigo-600 active:scale-95 text-xs font-bold text-white transition-colors" @click="send('MNMEN ON')">SETUP</button>
+							</div>
+							<div class="flex justify-center gap-2 border-t border-gray-800 pt-4">
+								<button class="btn-media flex-1" @click="send('NS9E')" aria-label="Previous">
+									<svg viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5">
+										<path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
+									</svg>
+								</button>
+								<button class="btn-media flex-[1.5] text-white" @click="send('NS9C')" aria-label="Stop">
+									<svg viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5">
+										<path d="M6 6h12v12H6z"/>
+									</svg>
+								</button>
+								<button class="btn-media flex-[2]" @click="send('NS9A')" aria-label="Play">
+									<svg viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5">
+										<path d="M4 5v14l9-7z"/>
+									</svg>
+								</button>
+								<button class="btn-media flex-[1.5] text-white" @click="send('NS9B')" aria-label="Pause">
+									<svg viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5">
+										<path d="M6 5h4v14H6z M14 5h4v14h-4z"/>
+									</svg>
+								</button>
+								<button class="btn-media flex-1" @click="send('NS9D')" aria-label="Next">
+									<svg viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5">
+										<path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
+									</svg>
+								</button>
+							</div>
+							<div class="flex justify-center gap-2 border-t border-gray-800 pt-3 mt-1">
+								<button class="btn-control p-2.5 flex-1 text-[10px] font-bold gap-1" @click="send('TPANDOWN')">
+									<svg viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4">
+										<path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+									</svg>
+									CH
+								</button>
+								<button class="btn-control p-2.5 flex-1 text-[10px] font-bold gap-1" @click="send('TPANUP')">
+									CH
+									<svg viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4">
+										<path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/>
+									</svg>
+								</button>
+							</div>
+						</div>
+						<div class="bg-gray-900 p-6 rounded-xl border border-gray-800 shadow-lg lg:col-span-1 h-min">
+							<h2 class="text-sm font-semibold mb-3 text-gray-400">Input Source</h2>
+							<div class="grid grid-cols-3 sm:grid-cols-4 gap-2 mb-6">
+								<button v-for="inp in inputs" :key="inp" @click="send('SI' + inp)" 
+									:class="['p-2 rounded text-[11px] sm:text-xs font-bold shadow-sm transition truncate', state.input === inp ? 'bg-blue-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700']">
+								{{ inp }}
+								</button>
+							</div>
+							<h2 class="text-sm font-semibold mb-3 text-gray-400">Quick Select</h2>
+							<div class="grid grid-cols-2 gap-2 mb-6">
+								<button v-for="i in 5" :key="i" @click="send('MSQUICK' + i)" class="py-2 bg-gray-800 hover:bg-indigo-600 rounded text-xs font-bold shadow transition text-gray-300 hover:text-white">Select {{i}}</button>
+							</div>
+							<h2 class="text-sm font-semibold mb-3 text-gray-400">Network Favorites</h2>
+							<div class="grid grid-cols-3 gap-2">
+								<button v-for="i in 3" :key="i" @click="send('ZMFAVORITE' + i)" class="py-2 bg-gray-800 hover:bg-indigo-600 rounded text-xs font-bold shadow transition text-gray-300 hover:text-white">Fav {{i}}</button>
+							</div>
+						</div>
+						<div class="bg-gray-900 p-6 rounded-xl border border-gray-800 shadow-lg space-y-4 lg:col-span-1 h-min">
+							<h2 class="text-lg font-semibold text-gray-300 border-b border-gray-800 pb-2">NSE / Song Info</h2>
+							<div class="bg-black rounded-lg p-4 font-mono border border-gray-700 min-h-[120px] space-y-1">
+								<template v-if="state.nseLines.some(l => l.trim().length > 0)">
+									<div v-if="state.nseLines[0]" class="text-blue-400 text-sm font-bold break-words border-l-2 border-blue-500 pl-2 py-0.5">
+										{{ state.nseLines[0] }}
+									</div>
+									<template v-for="i in [1,2,3,4,5,6,7,8]" :key="i">
+										<div v-if="state.nseLines[i]" class="text-gray-300 text-xs leading-5 break-words border-l-2 border-gray-700 pl-2 py-0.5">
+											{{ state.nseLines[i] }}
+										</div>
+									</template>
+								</template>
+								<div v-else class="text-gray-600 italic text-xs h-full flex items-center">No display data</div>
+							</div>
+							<div v-if="albumArtUrl" class="flex justify-center mt-2">
+								<img :src="albumArtUrl" @error="onAlbumArtError" alt="Album Art" class="rounded-lg shadow-lg object-cover border border-gray-700" style="width: 50%; max-width: 300px; aspect-ratio: 1;">
+							</div>
+						</div>
+					</div>
+					<div v-show="activeTab === 'Audio & Channels'" class="space-y-6">
+						<div class="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+							<div class="bg-gray-900 p-6 rounded-xl border border-gray-800 shadow-lg h-min space-y-3">
+								<div class="flex justify-between items-center border-b border-gray-800 pb-2 mb-2">
+									<div class="flex items-center gap-2">
+										<h2 class="text-lg font-semibold text-gray-300">Channel Trims</h2>
+										<span v-if="activeChannels.length > 0" class="text-xs font-bold px-2 py-0.5 rounded bg-gray-700 text-blue-300">{{ isStereoMode ? 'STEREO' : 'SURROUND' }}</span>
+									</div>
+									<button v-if="!isStereoMode && activeChannels.some(ch => !surroundChannels.includes(ch))" @click="showAllChannels = !showAllChannels" class="text-xs bg-gray-700 hover:bg-gray-600 px-3 py-1 font-bold rounded transition-colors text-gray-300">
+									{{ showAllChannels ? 'Less' : 'More' }}
+									</button>
+								</div>
+								<div v-if="activeChannels.length === 0" class="text-xs text-gray-600 italic py-2">Waiting for AVR channel data...</div>
+								<div v-for="ch in activeChannels" :key="ch" v-show="isStereoMode ? stereoChannels.includes(ch) : (surroundChannels.includes(ch) || showAllChannels)" class="flex items-center space-x-1 sm:space-x-2">
+									<span :class="['w-16 sm:w-28 text-[10px] sm:text-xs font-bold leading-tight shrink-0', ch === 'SW' ? 'text-blue-400' : 'text-gray-400']">{{ channelNames[ch] || ch }}</span>
+									<button @click="adjustChannel(ch, -0.5)" class="w-7 h-7 sm:w-8 sm:h-8 bg-gray-800 rounded flex items-center justify-center font-bold text-lg hover:bg-gray-700 active:scale-95 text-gray-300 shrink-0">-</button>
+									<input type="range" min="38" max="62" step="0.5" :value="state.channelVols[ch]" @input="e => { state.channelVols[ch] = parseFloat(e.target.value); onChannelDrag(ch); }" class="flex-1 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+									<button @click="adjustChannel(ch, 0.5)" class="w-7 h-7 sm:w-8 sm:h-8 bg-gray-800 rounded flex items-center justify-center font-bold text-lg hover:bg-gray-700 active:scale-95 text-gray-300 shrink-0">+</button>
+									<span class="w-10 sm:w-14 text-xs sm:text-sm text-right font-mono text-blue-300">{{ (state.channelVols[ch] - 50).toFixed(1) }}dB</span>
+								</div>
+							</div>
+							<div class="bg-gray-900 p-6 rounded-xl border border-gray-800 shadow-lg">
+								<h2 class="text-lg font-semibold mb-4 text-gray-300 border-b border-gray-800 pb-2">Surround Mode</h2>
+								<div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+									<button v-for="mode in modes" :key="mode" @click="send('MS' + mode)"
+										:class="['p-2 rounded text-xs font-bold shadow-sm transition truncate', isSurroundMode(mode) ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-300 hover:bg-gray-700']">
+									{{ mode }}
+									</button>
+								</div>
+								<p v-if="state.surround" class="text-[12px] text-gray-500 mt-2">Active: <span class="text-blue-400 font-mono">{{ state.surround }}</span></p>
+							</div>
+						</div>
+
+						<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+							<div class="bg-gray-900 p-6 rounded-xl border border-gray-800 shadow-lg">
+								<div class="flex justify-between items-center mb-4 border-b border-gray-800 pb-2">
+									<h2 class="text-lg font-semibold text-gray-300">Tone Control</h2>
+									<div class="flex space-x-2">
+										<button @click="send('PSTONE CTRL ON')" :class="['px-3 py-1 rounded text-xs font-bold', state.toneCtrl === 'ON' ? 'bg-blue-600' : 'bg-gray-700']">ON</button>
+										<button @click="send('PSTONE CTRL OFF')" :class="['px-3 py-1 rounded text-xs font-bold', state.toneCtrl === 'OFF' ? 'bg-blue-600' : 'bg-gray-700']">OFF</button>
+									</div>
+								</div>
+								<div :class="['space-y-4 mb-6 transition-opacity duration-300', state.toneCtrl === 'OFF' ? 'opacity-30 pointer-events-none' : 'opacity-100']">
+									<div class="flex items-center space-x-2 sm:space-x-4">
+										<span class="w-12 sm:w-14 text-xs sm:text-sm text-gray-400 font-bold">BASS</span>
+										<button @click="adjustTone('BAS', -1)" class="w-8 h-8 bg-gray-800 rounded flex items-center justify-center font-bold text-lg hover:bg-gray-700 active:scale-95 text-gray-300 shrink-0">-</button>
+										<input type="range" min="44" max="56" step="1" v-model.number="state.bass" @input="onToneDrag('BAS')" class="flex-1 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+										<button @click="adjustTone('BAS', 1)" class="w-8 h-8 bg-gray-800 rounded flex items-center justify-center font-bold text-lg hover:bg-gray-700 active:scale-95 text-gray-300 shrink-0">+</button>
+										<span class="w-10 sm:w-14 text-xs sm:text-sm text-right font-mono text-blue-300">{{ (state.bass - 50).toFixed(1) }}dB</span>
+									</div>
+									<div class="flex items-center space-x-2 sm:space-x-4">
+										<span class="w-12 sm:w-14 text-xs sm:text-sm text-gray-400 font-bold">TREBLE</span>
+										<button @click="adjustTone('TRE', -1)" class="w-8 h-8 bg-gray-800 rounded flex items-center justify-center font-bold text-lg hover:bg-gray-700 active:scale-95 text-gray-300 shrink-0">-</button>
+										<input type="range" min="44" max="56" step="1" v-model.number="state.treble" @input="onToneDrag('TRE')" class="flex-1 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+										<button @click="adjustTone('TRE', 1)" class="w-8 h-8 bg-gray-800 rounded flex items-center justify-center font-bold text-lg hover:bg-gray-700 active:scale-95 text-gray-300 shrink-0">+</button>
+										<span class="w-10 sm:w-14 text-xs sm:text-sm text-right font-mono text-blue-300">{{ (state.treble - 50).toFixed(1) }}dB</span>
+									</div>
+								</div>
+								<div class="border-t border-gray-800 pt-4">
+									<div class="flex justify-between items-center mb-2">
+										<h3 class="text-sm font-semibold text-gray-400">MultEQ XT</h3>
+										<span class="text-[10px] text-gray-600">AUDYSSEY/BYP.LR/FLAT require Audyssey Setup</span>
+									</div>
+									<div class="flex flex-wrap gap-2">
+										<button v-for="eq in multeqModes" :key="eq" @click="send('PSMULTEQ:' + eq)" :class="['px-3 py-1 rounded text-xs font-bold', state.multeq === eq ? 'bg-indigo-600' : 'bg-gray-800 hover:bg-gray-700']">{{ eq }}</button>
+									</div>
+								</div>
+							</div>
+							<div class="bg-gray-900 p-6 rounded-xl border border-gray-800 shadow-lg">
+								<div class="flex justify-between items-center mb-2 border-b border-gray-800 pb-2">
+									<h2 class="text-lg font-semibold text-gray-300">Audyssey Settings</h2>
+									<div class="flex space-x-2">
+										<button @click="send('PSDYNEQ ON')" :class="['px-3 py-1 rounded text-xs font-bold', state.dyneq === 'ON' ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600']">EQ ON</button>
+										<button @click="send('PSDYNEQ OFF')" :class="['px-3 py-1 rounded text-xs font-bold', state.dyneq === 'OFF' ? 'bg-red-600' : 'bg-gray-700 hover:bg-gray-600']">EQ OFF</button>
+									</div>
+								</div>
+								<p class="text-[10px] text-yellow-600 mb-3">Dynamic EQ and Dynamic Volume require Audyssey Setup to have been run (AVR menu → Speakers → Audyssey Setup)</p>
+								<div :class="['transition-opacity duration-300 space-y-4', state.dyneq === 'OFF' ? 'opacity-30 pointer-events-none' : 'opacity-100']">
+									<div>
+										<h3 class="text-xs font-semibold text-gray-400 mb-2">Reference Level Offset (dB)</h3>
+										<div class="flex space-x-2">
+											<button v-for="rl in ['0', '5', '10', '15']" :key="rl" @click="send('PSREFLEV ' + rl)" :class="['flex-1 py-1.5 rounded text-xs font-bold shadow-sm', state.reflev === rl ? 'bg-indigo-600' : 'bg-gray-800 hover:bg-gray-700']">{{ rl }}</button>
+										</div>
+									</div>
+									<div>
+										<h3 class="text-xs font-semibold text-gray-400 mb-2">Dynamic Volume</h3>
+										<div class="flex space-x-2">
+											<button v-for="dv in ['HEV', 'MED', 'LIT', 'OFF']" :key="dv" @click="send('PSDYNVOL ' + dv)" :class="['flex-1 py-1.5 rounded text-xs font-bold shadow-sm', state.dynvol === dv ? 'bg-indigo-600' : 'bg-gray-800 hover:bg-gray-700']">{{ dv }}</button>
+										</div>
+									</div>
+								</div>
+							</div>
+							<div class="bg-gray-900 p-6 rounded-xl border border-gray-800 shadow-lg">
+								<h2 class="text-lg font-semibold mb-4 text-gray-300 border-b border-gray-800 pb-2">Speaker Settings</h2>
+								<div class="space-y-4">
+									<div>
+										<div class="flex justify-between items-center mb-2">
+											<h3 class="text-xs font-semibold text-gray-400">Surround Back Mode</h3>
+											<span class="text-[10px] text-gray-600">Requires SB speakers (Amp Assign: Surround Back)</span>
+										</div>
+										<div class="flex flex-wrap gap-2">
+											<button v-for="sb in sbModes" :key="sb" @click="send('PSSB:' + sb)" :class="['px-3 py-1 rounded text-xs font-bold transition-colors', state.sbMode === sb ? 'bg-indigo-600 text-white' : 'bg-gray-800 hover:bg-gray-700 text-gray-300']">{{ sb }}</button>
+										</div>
+									</div>
+									<div>
+										<div class="flex justify-between items-center mb-2">
+											<h3 class="text-xs font-semibold text-gray-400">Front Speakers</h3>
+											<span class="text-[10px] text-gray-600">SPB and A+B require Amp Assign: Front B (AVR menu → Speakers → Amp Assign)</span>
+										</div>
+										<div class="flex space-x-2">
+											<button v-for="fs in frontSpModes" :key="fs" @click="send('PSFRONT ' + fs)" :class="['flex-1 py-1.5 rounded text-xs font-bold transition-colors', state.frontSp === fs ? 'bg-indigo-600 text-white' : 'bg-gray-800 hover:bg-gray-700 text-gray-300']">{{ fs }}</button>
+										</div>
+									</div>
+									<div class="bg-gray-800 p-3 rounded-lg" :class="{'opacity-40 pointer-events-none': !isDirectMode}">
+										<div class="flex items-center justify-between mb-1">
+											<span class="text-xs font-bold text-gray-400">Subwoofer</span>
+											<div class="flex space-x-2">
+												<button @click="send('PSSWR ON')" :class="['px-4 py-1.5 rounded text-xs font-bold transition-colors', state.swr === 'ON' ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300']">ON</button>
+												<button @click="send('PSSWR OFF')" :class="['px-4 py-1.5 rounded text-xs font-bold transition-colors', state.swr === 'OFF' ? 'bg-red-700 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300']">OFF</button>
+											</div>
+										</div>
+										<p class="text-[10px] text-yellow-600">Requires: sound mode DIRECT or PURE DIRECT, and Subwoofer Mode = LFE+Main (AVR menu → Speakers → Bass)</p>
+									</div>
+									<div>
+										<div class="flex items-center justify-between mb-2">
+											<h3 class="text-xs font-semibold text-gray-400">Loudness Management (PSLOM)</h3>
+											<span v-if="!isTrueHDMode" class="text-[10px] text-yellow-600">Dolby TrueHD only</span>
+										</div>
+										<div class="flex space-x-2" :class="{'opacity-40 pointer-events-none': !isTrueHDMode}">
+											<button @click="send('PSLOM ON')" :class="['flex-1 py-1.5 rounded text-xs font-bold transition-colors', state.lom === 'ON' ? 'bg-blue-600 text-white' : 'bg-gray-800 hover:bg-gray-700 text-gray-300']">ON</button>
+											<button @click="send('PSLOM OFF')" :class="['flex-1 py-1.5 rounded text-xs font-bold transition-colors', state.lom === 'OFF' ? 'bg-red-700 text-white' : 'bg-gray-800 hover:bg-gray-700 text-gray-300']">OFF</button>
+										</div>
+									</div>
+								</div>
+							</div>
+							<div class="bg-gray-900 p-6 rounded-xl border border-gray-800 shadow-lg space-y-4">
+								<h2 class="text-lg font-semibold text-gray-300 border-b border-gray-800 pb-2">Signal Processing</h2>
+								<div>
+									<h3 class="text-xs font-semibold text-gray-400 mb-2">Cinema EQ</h3>
+									<div class="flex space-x-2">
+										<button @click="send('PSCINEMA EQ.ON')" :class="['flex-1 py-1.5 rounded text-xs font-bold transition-colors', state.cinemaEq === 'ON' ? 'bg-blue-600 text-white' : 'bg-gray-800 hover:bg-gray-700 text-gray-300']">ON</button>
+										<button @click="send('PSCINEMA EQ.OFF')" :class="['flex-1 py-1.5 rounded text-xs font-bold transition-colors', state.cinemaEq === 'OFF' ? 'bg-red-700 text-white' : 'bg-gray-800 hover:bg-gray-700 text-gray-300']">OFF</button>
+									</div>
+								</div>
+								<div>
+									<div class="flex items-center justify-between mb-2">
+										<h3 class="text-xs font-semibold text-gray-400">Dynamic Compression</h3>
+										<span v-if="!isTrueHDMode" class="text-[10px] text-yellow-600">Dolby TrueHD only</span>
+									</div>
+									<div class="flex flex-wrap gap-2" :class="{'opacity-40 pointer-events-none': !isTrueHDMode}">
+										<button v-for="d in drcModes" :key="d" @click="send('PSDRC ' + d)" :class="['flex-1 py-1.5 rounded text-xs font-bold transition-colors', state.drc === d ? 'bg-indigo-600 text-white' : 'bg-gray-800 hover:bg-gray-700 text-gray-300']">{{ d }}</button>
+									</div>
+								</div>
+								<div>
+									<div class="flex items-center justify-between mb-2">
+										<h3 class="text-xs font-semibold text-gray-400">Audio Restorer</h3>
+										<span v-if="isDirectMode" class="text-[10px] text-yellow-600">N/A in DIRECT mode</span>
+									</div>
+									<div class="flex flex-wrap gap-2" :class="{'opacity-40 pointer-events-none': isDirectMode}">
+										<button v-for="ar in audioRestorerModes" :key="ar" @click="send('PSRSTR ' + ar)" :class="['flex-1 py-1.5 rounded text-xs font-bold transition-colors', state.audioRestorer === ar ? 'bg-indigo-600 text-white' : 'bg-gray-800 hover:bg-gray-700 text-gray-300']">{{ ar }}</button>
+									</div>
+								</div>
+								<div>
+									<div class="flex items-center justify-between mb-2">
+										<h3 class="text-xs font-semibold text-gray-400">Room Size</h3>
+										<span v-if="!isOriginalListeningMode" class="text-[10px] text-yellow-600">Original listening modes only</span>
+									</div>
+									<div class="flex space-x-2" :class="{'opacity-40 pointer-events-none': !isOriginalListeningMode}">
+										<button v-for="rs in roomSizes" :key="rs" @click="send('PSRSZ ' + rs)" :class="['flex-1 py-1.5 rounded text-xs font-bold transition-colors', state.roomSize === rs ? 'bg-indigo-600 text-white' : 'bg-gray-800 hover:bg-gray-700 text-gray-300']">{{ rs }}</button>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div v-show="activeTab === 'Tuner & Network'" class="space-y-6">
+						<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+							<div class="bg-gray-900 p-6 rounded-xl border border-gray-800 shadow-lg">
+								<div class="flex justify-between items-center mb-4 border-b border-gray-800 pb-2">
+									<h2 class="text-lg font-semibold text-gray-300">FM Tuner Control</h2>
+									<span v-if="!isTunerMode" class="text-[10px] text-yellow-600">Select TUNER input to use</span>
+								</div>
+								<div :class="{'opacity-40 pointer-events-none': !isTunerMode}">
+									<div class="bg-black rounded-lg p-3 border border-gray-700 shadow-inner mb-4">
+										<div class="text-[10px] text-gray-500 font-bold tracking-wider mb-1">
+											CURRENT FREQ
+											<span v-if="state.tunerPreset" class="text-blue-400 ml-2">PRESET {{ state.tunerPreset }}</span>
+										</div>
+										<div class="text-3xl font-mono font-bold text-blue-400">{{ formattedTunerFreq }}</div>
+									</div>
+									<div class="mb-4">
+										<div class="flex gap-2">
+											<div class="flex-1">
+												<input v-model="manualFreq" @keyup.enter="setTunerFreq" @input="freqError = ''"
+													placeholder="87.5 – 108.0 MHz"
+													class="w-full p-2 bg-gray-800 border rounded text-green-400 font-mono text-xs focus:outline-none focus:ring-1 transition"
+													:class="freqError ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : 'border-gray-600 focus:border-blue-500 focus:ring-blue-500'">
+												<p v-if="freqError" class="text-[10px] text-red-500 mt-1">{{ freqError }}</p>
+											</div>
+											<button @click="setTunerFreq" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-xs font-bold text-white transition shadow shrink-0">TUNE</button>
+										</div>
+									</div>
+									<div class="flex space-x-2 mb-4">
+										<button @click="send('TMANAUTO')" :class="['flex-1 py-1.5 rounded text-xs font-bold shadow-sm transition-colors', state.tunerMode === 'AUTO' ? 'bg-blue-600 text-white' : 'bg-gray-800 hover:bg-gray-700 text-gray-300']">Auto Scan</button>
+										<button @click="send('TMANMANUAL')" :class="['flex-1 py-1.5 rounded text-xs font-bold shadow-sm transition-colors', state.tunerMode === 'MANUAL' ? 'bg-blue-600 text-white' : 'bg-gray-800 hover:bg-gray-700 text-gray-300']">Manual Step</button>
+									</div>
+									<div class="flex gap-2 mb-4 pb-4 border-b border-gray-800">
+										<button @click="send('TFANDOWN')" class="flex-1 py-2 bg-gray-800 rounded hover:bg-gray-700 font-bold text-gray-300 flex justify-center items-center gap-1 text-xs">
+											<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" class="w-4 h-4">
+												<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+											</svg>
+											FREQ
+										</button>
+										<button @click="send('TFANUP')" class="flex-1 py-2 bg-gray-800 rounded hover:bg-gray-700 font-bold text-gray-300 flex justify-center items-center gap-1 text-xs">
+											FREQ
+											<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" class="w-4 h-4">
+												<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+											</svg>
+										</button>
+									</div>
+									<div class="space-y-3">
+										<div>
+											<h3 class="text-xs font-semibold text-gray-400 mb-2">Recall Preset</h3>
+											<div class="flex gap-2">
+												<input v-model="presetRecall" @keyup.enter="recallPreset" type="number" min="1" max="56" placeholder="1–56"
+													class="w-20 p-2 bg-gray-800 border border-gray-600 rounded text-white font-mono text-xs focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition">
+												<button @click="recallPreset" class="flex-1 py-2 bg-indigo-700 hover:bg-indigo-600 rounded text-xs font-bold text-white transition">GO TO</button>
+												<button @click="send('TPANDOWN')" class="px-3 py-2 bg-gray-800 rounded hover:bg-gray-700 font-bold text-gray-300">
+													<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" class="w-4 h-4">
+														<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+													</svg>
+												</button>
+												<button @click="send('TPANUP')" class="px-3 py-2 bg-gray-800 rounded hover:bg-gray-700 font-bold text-gray-300">
+													<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" class="w-4 h-4">
+														<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+													</svg>
+												</button>
+											</div>
+										</div>
+										<div>
+											<h3 class="text-xs font-semibold text-gray-400 mb-2">Save Current Freq to Preset</h3>
+											<div class="flex gap-2">
+												<input v-model="presetSave" type="number" min="1" max="56" placeholder="1–56"
+													class="w-20 p-2 bg-gray-800 border border-gray-600 rounded text-white font-mono text-xs focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition">
+												<button @click="savePreset" class="flex-1 py-2 bg-indigo-900 hover:bg-indigo-800 border border-indigo-700 rounded text-xs font-bold text-indigo-300 hover:text-white transition">SAVE TO SLOT</button>
+												<button @click="send('TPANMEM')" class="flex-1 py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded text-xs font-bold text-gray-300 transition" title="Save to current preset slot">SAVE HERE</button>
+											</div>
+											<p class="text-[10px] text-gray-600 mt-1">SAVE HERE stores to current slot{{ state.tunerPreset ? ' (preset ' + state.tunerPreset + ')' : '' }}</p>
+										</div>
+									</div>
+								</div>
+							</div>
+							<div class="bg-gray-900 p-6 rounded-xl border border-gray-800 shadow-lg space-y-4">
+								<h2 class="text-lg font-semibold text-gray-300 border-b border-gray-800 pb-2">Internet Radio / Network</h2>
+								<div>
+									<h3 class="text-xs font-semibold text-gray-400 mb-2">Navigation</h3>
+									<div class="d-pad-grid mx-auto mb-2">
+										<div></div>
+										<button @click="send('NS90')" class="p-2 bg-gray-800 rounded hover:bg-gray-700 active:scale-95 flex justify-center items-center text-gray-300 transition-colors">
+											<svg viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5">
+												<path d="M12 8l-6 6 1.41 1.41L12 10.83l4.59 4.58L18 14z"/>
+											</svg>
+										</button>
+										<div></div>
+										<button @click="send('NS93')" class="p-2 bg-gray-800 rounded hover:bg-gray-700 active:scale-95 flex justify-center items-center text-gray-300 transition-colors">
+											<svg viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5">
+												<path d="M15.41 16.59L10.83 12l4.58-4.59L14 6l-6 6 6 6z"/>
+											</svg>
+										</button>
+										<button @click="send('NS94')" class="p-2 bg-blue-700 rounded hover:bg-blue-600 active:scale-95 flex justify-center items-center text-white transition-colors font-bold text-xs">OK</button>
+										<button @click="send('NS92')" class="p-2 bg-gray-800 rounded hover:bg-gray-700 active:scale-95 flex justify-center items-center text-gray-300 transition-colors">
+											<svg viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5">
+												<path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6z"/>
+											</svg>
+										</button>
+										<div></div>
+										<button @click="send('NS91')" class="p-2 bg-gray-800 rounded hover:bg-gray-700 active:scale-95 flex justify-center items-center text-gray-300 transition-colors">
+											<svg viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5">
+												<path d="M16.59 8.59L12 13.17 7.41 8.59 6 10l6 6 6-6z"/>
+											</svg>
+										</button>
+										<div></div>
+									</div>
+									<div class="flex gap-2 mt-2">
+										<button @click="send('NS9Y')" class="flex-1 py-1.5 bg-gray-800 rounded text-xs font-bold hover:bg-gray-700 text-gray-300 transition-colors">Page ▲</button>
+										<button @click="send('NS9X')" class="flex-1 py-1.5 bg-gray-800 rounded text-xs font-bold hover:bg-gray-700 text-gray-300 transition-colors">Page ▼</button>
+									</div>
+								</div>
+								<div>
+									<h3 class="text-xs font-semibold text-gray-400 mb-2">Playback</h3>
+									<div class="flex gap-2">
+										<button @click="send('NS9E')" class="flex-1 py-2 bg-gray-800 rounded text-xs font-bold hover:bg-gray-700 text-gray-300 transition-colors">
+											<svg viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4 mx-auto">
+												<path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
+											</svg>
+										</button>
+										<button @click="send('NS9C')" class="flex-1 py-2 bg-gray-800 rounded text-xs font-bold hover:bg-gray-700 text-gray-300 transition-colors">
+											<svg viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4 mx-auto">
+												<path d="M6 6h12v12H6z"/>
+											</svg>
+										</button>
+										<button @click="send('NS9A')" class="flex-1 py-2 bg-gray-800 rounded text-xs font-bold hover:bg-gray-700 text-gray-300 transition-colors">
+											<svg viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4 mx-auto">
+												<path d="M8 5v14l11-7z"/>
+											</svg>
+										</button>
+										<button @click="send('NS9B')" class="flex-1 py-2 bg-gray-800 rounded text-xs font-bold hover:bg-gray-700 text-gray-300 transition-colors">
+											<svg viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4 mx-auto">
+												<path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+											</svg>
+										</button>
+										<button @click="send('NS9D')" class="flex-1 py-2 bg-gray-800 rounded text-xs font-bold hover:bg-gray-700 text-gray-300 transition-colors">
+											<svg viewBox="0 0 24 24" fill="currentColor" class="w-4 h-4 mx-auto">
+												<path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
+											</svg>
+										</button>
+									</div>
+								</div>
+								<div>
+									<h3 class="text-xs font-semibold text-gray-400 mb-2">Text Search (iRadio/Server/USB)</h3>
+									<div class="flex gap-2">
+										<input v-model="nsdQuery" @keyup.enter="sendNsd" placeholder="Type to search..." maxlength="1" class="flex-1 p-2 bg-gray-800 border border-gray-700 rounded text-white font-mono uppercase text-xs focus:outline-none focus:border-blue-500 transition">
+										<button @click="sendNsd" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-xs font-bold text-white transition">GO</button>
+									</div>
+									<p class="text-[10px] text-gray-600 mt-1">Jumps to first entry starting with that character</p>
+								</div>
+								<div>
+									<h3 class="text-xs font-semibold text-gray-400 mb-2">Presets (call stored station)</h3>
+									<div class="grid grid-cols-5 gap-1.5">
+										<button v-for="n in 10" :key="n" @click="send('NSB' + n.toString().padStart(2,'0'))" class="py-1.5 bg-gray-800 rounded text-xs font-bold hover:bg-gray-700 text-gray-300 transition-colors">{{ n }}</button>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div v-show="activeTab === 'Video & Signal'" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+						<div class="bg-gray-900 p-6 rounded-xl border border-gray-800 shadow-lg space-y-6">
+							<div>
+								<h2 class="text-sm font-semibold mb-3 text-gray-400">Video Select (SV)</h2>
+								<div class="flex flex-wrap gap-2">
+									<button v-for="vs in videoSelects" :key="vs" @click="send('SV' + vs)" :class="['px-3 py-1 rounded text-xs font-bold', state.videoSelect === vs ? 'bg-blue-600' : 'bg-gray-800 hover:bg-gray-700']">{{ vs }}</button>
+								</div>
+							</div>
+							<div>
+								<h2 class="text-sm font-semibold mb-3 text-gray-400">Aspect Ratio (VS)</h2>
+								<div class="flex space-x-2">
+									<button @click="send('VSASPNRM')" :class="['flex-1 py-2 rounded text-xs font-bold transition-colors', state.aspect === 'NRM' ? 'bg-indigo-600' : 'bg-gray-800 hover:bg-gray-700']">4:3 (Normal)</button>
+									<button @click="send('VSASPFUL')" :class="['flex-1 py-2 rounded text-xs font-bold transition-colors', state.aspect === 'FUL' ? 'bg-indigo-600' : 'bg-gray-800 hover:bg-gray-700']">16:9 (Full)</button>
+								</div>
+							</div>
+							<div>
+								<h2 class="text-sm font-semibold mb-3 text-gray-400">Resolution — Analog (VSSC)</h2>
+								<div class="flex flex-wrap gap-2">
+									<button v-for="res in resolutions" :key="res" @click="send('VSSC' + res)" :class="['px-3 py-1 rounded text-xs font-bold transition-colors', state.resolution === res ? 'bg-indigo-600' : 'bg-gray-800 hover:bg-gray-700']">{{ res }}</button>
+								</div>
+							</div>
+							<div>
+								<h2 class="text-sm font-semibold mb-3 text-gray-400">Resolution — HDMI (VSSCH)</h2>
+								<div class="flex flex-wrap gap-2">
+									<button v-for="res in resolutions" :key="res" @click="send('VSSCH' + res)" :class="['px-3 py-1 rounded text-xs font-bold transition-colors', state.hdmiResolution === res ? 'bg-indigo-600' : 'bg-gray-800 hover:bg-gray-700']">{{ res }}</button>
+								</div>
+							</div>
+						</div>
+						<div class="bg-gray-900 p-6 rounded-xl border border-gray-800 shadow-lg space-y-6">
+							<div>
+								<h2 class="text-sm font-semibold mb-3 text-gray-400">HDMI Audio Output (VSAUDIO)</h2>
+								<div class="flex space-x-2">
+									<button @click="send('VSAUDIO AMP')" :class="['flex-1 py-2 rounded text-xs font-bold transition-colors', state.vsAudio === 'AMP' ? 'bg-blue-600' : 'bg-gray-800 hover:bg-gray-700']">AMP</button>
+									<button @click="send('VSAUDIO TV')" :class="['flex-1 py-2 rounded text-xs font-bold transition-colors', state.vsAudio === 'TV' ? 'bg-blue-600' : 'bg-gray-800 hover:bg-gray-700']">TV</button>
+								</div>
+							</div>
+							<div>
+								<h2 class="text-sm font-semibold mb-3 text-gray-400">Video Processing Mode (VSVPM)</h2>
+								<div class="flex space-x-2">
+									<button @click="send('VSVPMAUTO')" :class="['flex-1 py-2 rounded text-xs font-bold transition-colors', state.vsVpm === 'AUTO' ? 'bg-indigo-600' : 'bg-gray-800 hover:bg-gray-700']">AUTO</button>
+									<button @click="send('VSVPMGAME')" :class="['flex-1 py-2 rounded text-xs font-bold transition-colors', state.vsVpm === 'GAME' ? 'bg-indigo-600' : 'bg-gray-800 hover:bg-gray-700']">GAME</button>
+									<button @click="send('VSVPMMOVI')" :class="['flex-1 py-2 rounded text-xs font-bold transition-colors', state.vsVpm === 'MOVI' ? 'bg-indigo-600' : 'bg-gray-800 hover:bg-gray-700']">MOVIE</button>
+								</div>
+							</div>
+							<div>
+								<h2 class="text-sm font-semibold mb-3 text-gray-400">Signal Decode (SD)</h2>
+								<div class="grid grid-cols-2 gap-2">
+									<button v-for="sd in signalDecodes" :key="sd" @click="send('SD' + sd)" :class="['py-2 rounded text-xs font-bold', state.signalDecode === sd ? 'bg-blue-600' : 'bg-gray-800 hover:bg-gray-700']">{{ sd }}</button>
+								</div>
+							</div>
+							<div>
+								<h2 class="text-sm font-semibold mb-3 text-gray-400">Digital Decode (DC)</h2>
+								<div class="grid grid-cols-3 gap-2">
+									<button v-for="dc in digitalDecodes" :key="dc" @click="send('DC' + dc)" :class="['py-2 rounded text-xs font-bold', state.digitalDecode === dc ? 'bg-indigo-600' : 'bg-gray-800 hover:bg-gray-700']">{{ dc }}</button>
+								</div>
+							</div>
+						</div>
+					</div>
+					<div v-show="activeTab === 'Advanced'" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+						
+							<div class="bg-gray-900 p-6 rounded-xl border border-gray-800 shadow-lg">
+								<h2 class="text-sm font-semibold mb-3 text-gray-400 border-b border-gray-800 pb-2">Device Lock (SY)</h2>
+								<div class="space-y-2">
+									<button @click="toggleLock" :class="['w-full py-3 rounded-lg font-bold shadow-md transition-colors tracking-wider text-sm', state.remoteLock === 'ON' ? 'bg-red-700 hover:bg-red-600 text-white' : 'bg-gray-800 hover:bg-gray-700 text-gray-300']">
+									{{ state.remoteLock === 'ON' ? 'REMOTE LOCKED' : 'REMOTE UNLOCKED' }}
+									</button>
+									<button @click="send('SYPANEL LOCK ON')" :class="['w-full py-2.5 rounded-lg font-bold shadow-md transition-colors text-xs tracking-wider', state.panelLock === 'PANEL' ? 'bg-orange-700 hover:bg-orange-600 text-white' : 'bg-gray-800 hover:bg-gray-700 text-gray-300']">
+									{{ state.panelLock === 'PANEL' ? 'PANEL LOCKED' : 'LOCK PANEL' }}
+									</button>
+									<button @click="send('SYPANEL+V LOCK ON')" :class="['w-full py-2.5 rounded-lg font-bold shadow-md transition-colors text-xs tracking-wider', state.panelLock === 'PANEL+V' ? 'bg-orange-700 hover:bg-orange-600 text-white' : 'bg-gray-800 hover:bg-gray-700 text-gray-300']">
+									{{ state.panelLock === 'PANEL+V' ? 'PANEL+VOL LOCKED' : 'LOCK PANEL+VOL' }}
+									</button>
+									<button v-if="state.panelLock !== 'OFF'" @click="send('SYPANEL LOCK OFF')" class="w-full py-2 rounded-lg font-bold shadow-md transition-colors text-xs bg-green-700 hover:bg-green-600 text-white tracking-wider">
+									UNLOCK PANEL
+									</button>
+								</div>
+							</div>
+							<div class="bg-gray-900 p-6 rounded-xl border border-gray-800 shadow-lg h-min flex flex-col justify-between">
+								<div>
+									<h2 class="text-lg font-semibold mb-2 text-gray-300 border-b border-gray-800 pb-2">Terminal</h2>
+									<p class="text-[11px] sm:text-xs text-gray-500 mb-4">Execute raw Telnet commands and intercept all AVR broadcasts in real-time.</p>
+								</div>
+								<button @click="terminalEnabled = !terminalEnabled" :class="['w-full py-3 rounded-lg font-bold shadow-md transition text-sm', terminalEnabled ? 'bg-blue-600 hover:bg-blue-500 text-white' : 'bg-gray-800 hover:bg-gray-700 text-gray-300']">
+								{{ terminalEnabled ? 'HIDE TERMINAL HUD' : 'SHOW TERMINAL HUD' }}
+								</button>
+							</div>
+				</div>
+			</div>
+
+			<!-- Full UI Disable Overlay -->
+			<div v-if="disableReason" class="fixed inset-0 bg-gray-950/20 backdrop-blur-[1px] flex justify-center pt-32" style="z-index:100">
+				<div class="bg-gray-900 border border-gray-700 rounded-2xl px-8 py-5 flex flex-col items-center gap-2 shadow-2xl h-min">
+					<svg v-if="disableReason.icon === 'standby'" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-9 h-9 text-gray-500">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M18.364 5.636a9 9 0 11-12.728 0M12 3v9" />
+					</svg>
+					<svg v-else xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-9 h-9 text-yellow-500">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+					</svg>
+					<span class="text-gray-400 font-bold tracking-widest text-sm uppercase">{{ disableReason.text }}</span>
+				</div>
+			</div>
+			<div v-show="terminalEnabled" class="w-full h-64 shrink-0 transition-all duration-300"></div>
+			<div v-show="terminalEnabled" class="fixed bottom-0 left-0 right-0 bg-black border-t border-gray-700 z-50 flex flex-col h-64 shadow-[0_-15px_40px_rgba(0,0,0,0.85)]">
+				<div class="flex justify-between items-center bg-gray-900 px-4 py-2 border-b border-gray-800 shrink-0">
+					<span class="text-xs font-bold text-gray-400 tracking-wider">AVR SYSTEM TERMINAL</span>
+					<div class="space-x-4">
+						<button @click="debugLog = []" class="text-[11px] font-bold text-gray-500 hover:text-white transition">CLEAR LOG</button>
+						<button @click="terminalEnabled = false" class="text-[11px] font-bold text-red-500 hover:text-red-400 transition">CLOSE</button>
+					</div>
+				</div>
+				<div id="terminal-logs" @scroll="onTerminalScroll" class="flex-1 overflow-y-auto p-3 font-mono text-[10px] sm:text-xs space-y-1 bg-gray-950">
+					<div v-if="debugLog.length === 0" class="text-gray-600 italic flex h-full items-center justify-center">Awaiting incoming data...</div>
+					<div v-for="(event, idx) in debugLog" :key="idx" class="break-all opacity-90 hover:opacity-100">
+						<span class="text-gray-600 mr-2">[{{ event.time }}]</span>
+						<span :class="{'text-gray-600': event.isHb, 'text-green-400': !event.isTx && !event.isHb, 'text-blue-400 font-bold': event.isTx}">
+						{{ event.msg }} <span v-if="event.isHb" class="text-[9px] ml-1 uppercase">(Heartbeat)</span>
+						</span>
+					</div>
+				</div>
+				<div class="p-2 bg-gray-900 flex space-x-2 border-t border-gray-800 shrink-0">
+					<input v-model="rawCommand" @keyup.enter="sendRaw" placeholder="Enter Raw Command (e.g. PSBAS 50)..." class="flex-1 p-2 bg-black border border-gray-700 rounded-md text-green-400 font-mono uppercase text-xs focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition shadow-inner">
+					<button @click="sendRaw" class="px-5 py-2 bg-blue-600 hover:bg-blue-500 rounded-md text-xs font-bold text-white shadow-md transition active:scale-95">SEND</button>
+				</div>
+			</div>
+		</div>
+	</body>
+</html>
