@@ -8,7 +8,7 @@ A Python-based tool that communicates with a Denon AVR 2113 over Telnet, provide
 - Run the script with python3: `python3 server.py`
 
 ## General Notes
-- This was developed for Windows but should work for Linux too. Have not tested yet. Slight adjustments might be needed.
+- Should work on Windows and Linux, have not tested Mac.
 - This is customized to my needs - feel free to build on it to make it suitable for you
 - This was created based on the telnet protocol specification for the Denon AVR 2113 which was released around 2012/2013
   - It might be compatible with some other Denon AVRs but I have not tested and do not plan to add more supported AVRs
