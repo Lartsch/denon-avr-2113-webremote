@@ -20,7 +20,7 @@ from sinricpro import SinricPro, SinricProConfig, SinricProTV
 # =============================================================================
 
 # Connection Settings
-AVR_IP = '192.168.XXX.YYY'
+AVR_IP = 'XXX.XXX.XXX.XXX'
 AVR_PORT = 23
 SERVER_HOST = '0.0.0.0'
 SERVER_PORT = 8000
@@ -77,7 +77,7 @@ async def index(request):
     index_path = os.path.join(base_dir, 'frontend', 'index.html')
     if not os.path.exists(index_path):
         return aiohttp.web.Response(text="[FATAL ERROR] index.html not found in the 'frontend' folder.", status=404)
-    return aiohttp.web.FileResponse(index_path)
+    return aiohttp.web.FileResponse(index_path, headers={'Cache-Control': 'no-cache'})
 
 
 async def album_art_handler(request):
@@ -929,7 +929,16 @@ async def _start_sinric_pro():
 
 
 async def start_app():
-    app = aiohttp.web.Application()
+    @aiohttp.web.middleware
+    async def cache_middleware(request, handler):
+        """Add Cache-Control headers to static frontend assets."""
+        response = await handler(request)
+        if request.path.startswith('/frontend/'):
+            # Cache JS/CSS for 1 day; index.html is served separately with no-cache
+            response.headers.setdefault('Cache-Control', 'public, max-age=86400')
+        return response
+
+    app = aiohttp.web.Application(middlewares=[cache_middleware])
     global http_session
     http_session = aiohttp.ClientSession()
 
