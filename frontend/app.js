@@ -53,8 +53,8 @@ const formatVal = (num) => {
 };
 
 const formatTime = () => {
-    return new Date().toLocaleTimeString('en-GB', { hour12: false }) + '.' + 
-           new Date().getMilliseconds().toString().padStart(3, '0');
+    return new Date().toLocaleTimeString('en-GB', { hour12: false }) + '.' +
+        new Date().getMilliseconds().toString().padStart(3, '0');
 };
 
 createApp({
@@ -68,7 +68,7 @@ createApp({
         const presetRecall = ref('');
         const presetSave = ref('');
         const nsdQuery = ref('');
-        
+
         const savedTerminalState = localStorage.getItem('avr_terminal_enabled');
         const terminalEnabled = ref(savedTerminalState === 'true');
 
@@ -91,7 +91,7 @@ createApp({
                 // Find the button that matches the current activeTab value
                 const buttons = Array.from(container.querySelectorAll('button'));
                 const activeBtn = buttons.find(btn => btn.textContent.trim() === activeTab.value);
-                
+
                 if (activeBtn) {
                     activeBtn.scrollIntoView({ behavior, block: 'nearest', inline: 'center' });
                 }
@@ -102,7 +102,7 @@ createApp({
             localStorage.setItem('avr_active_tab', newTab);
             scrollActiveTabIntoView('smooth');
         });
-        
+
         const resetState = () => {
             state.value.nseLines = Array(9).fill('');
             state.value.input = state.value.input; // Keep input but clear metadata
@@ -174,10 +174,10 @@ createApp({
                     startVol = (wasSuppressed && currentUi !== null) ? currentUi : (trueVal !== null ? trueVal : (currentUi || getMin()));
                 }
                 pendingDelta += delta;
-                
+
                 const minVal = getMin();
                 const maxVal = getMax();
-                
+
                 // Optimistic UI update using the starting volume as the anchor
                 setUiVal(Math.max(minVal, Math.min(maxVal, startVol + pendingDelta)));
 
@@ -236,9 +236,9 @@ createApp({
 
         const formattedTunerFreq = computed(() => {
             let fStr = state.value.tunerFreq;
-            if(!fStr) return '---.-- MHz';
+            if (!fStr) return '---.-- MHz';
             let match = fStr.match(/\d+/);
-            if(match) {
+            if (match) {
                 let f = parseInt(match[0], 10) / 100;
                 return f.toFixed(2) + ' MHz';
             }
@@ -390,11 +390,11 @@ createApp({
 
                 debugLog.value.push({ time: timeStr, msg: msg, isTx: false, isHb: isHb });
                 if (debugLog.value.length > CONFIG.MAX_LOG_ENTRIES) debugLog.value.shift();
-                
+
                 if (terminalEnabled.value && isScrolledToBottom.value) {
                     scrollToBottom();
                 }
-                
+
                 if (msg === 'PWON') state.value.power = 'ON';
                 else if (msg === 'PWSTANDBY') state.value.power = 'STANDBY';
                 else if (msg === 'MUON') state.value.mute = 'ON';
@@ -472,7 +472,7 @@ createApp({
                     }
                 }
             };
-            
+
             ws.value.onclose = () => {
                 if (connectionStatus.value !== 'RECONNECTING') {
                     connectionStatus.value = 'DISCONNECTED';
@@ -506,7 +506,7 @@ createApp({
         };
 
         const sendRaw = () => {
-            if(rawCommand.value) {
+            if (rawCommand.value) {
                 send(rawCommand.value.toUpperCase());
                 rawCommand.value = '';
             }
@@ -564,6 +564,15 @@ createApp({
         const onVolumeDrag = () => mvManager.drag();
         const adjustChannel = (ch, delta) => cvManagers[ch].adjust(delta);
         const onChannelDrag = (ch) => cvManagers[ch].drag();
+
+        const resetChannels = () => {
+            // Send the neutral trim (50 = 0 dB) only for active channels not already at 0 dB
+            activeChannels.value.forEach(ch => {
+                if (state.value.channelVols[ch] !== 50) {
+                    send(`CV${ch} ${formatVal(50)}`);
+                }
+            });
+        };
 
         onMounted(() => {
             console.log('[App] Mounted, initiating WebSocket connection...');
@@ -624,7 +633,7 @@ createApp({
             return s === 'STEREO' || s === 'DIRECT' || s === 'PURE DIRECT';
         });
 
-        const activeChannels = computed(() => 
+        const activeChannels = computed(() =>
             CHANNELS.filter(ch => state.value.channelVols[ch] !== null)
         );
 
@@ -632,13 +641,13 @@ createApp({
             wsConnected: computed(() => connectionStatus.value === 'CONNECTED'),
             avrConnected,
             connectionStatus, state, tabs, activeTab,
-            inputs: INPUTS, modes: MODES, videoSelects: VIDEO_SELECTS, signalDecodes: SIGNAL_DECODES, 
+            inputs: INPUTS, modes: MODES, videoSelects: VIDEO_SELECTS, signalDecodes: SIGNAL_DECODES,
             channelNames: CHANNEL_NAMES,
-            digitalDecodes: DIGITAL_DECODES, resolutions: RESOLUTIONS, 
-            multeqModes: MULTEQ_MODES, channels: CHANNELS, drcModes: DRC_MODES, sbModes: SB_MODES, 
+            digitalDecodes: DIGITAL_DECODES, resolutions: RESOLUTIONS,
+            multeqModes: MULTEQ_MODES, channels: CHANNELS, drcModes: DRC_MODES, sbModes: SB_MODES,
             frontSpModes: FRONT_SP_MODES, audioRestorerModes: AUDIO_RESTORER_MODES, roomSizes: ROOM_SIZES,
             send, sendRaw, rawCommand, togglePower, toggleMute, toggleLock,
-            adjustVolume, onVolumeDrag, onToneDrag, onChannelDrag, adjustTone, adjustChannel,
+            adjustVolume, onVolumeDrag, onToneDrag, onChannelDrag, adjustTone, adjustChannel, resetChannels,
             terminalEnabled, debugLog, onTerminalScroll,
             showAllChannels, manualFreq, freqError, formattedTunerFreq, setTunerFreq,
             presetRecall, presetSave, recallPreset, savePreset,
