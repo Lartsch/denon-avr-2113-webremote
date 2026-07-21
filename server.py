@@ -77,7 +77,7 @@ async def index(request):
     index_path = os.path.join(base_dir, 'frontend', 'index.html')
     if not os.path.exists(index_path):
         return aiohttp.web.Response(text="[FATAL ERROR] index.html not found in the 'frontend' folder.", status=404)
-    return aiohttp.web.FileResponse(index_path, headers={'Cache-Control': 'no-cache'})
+    return aiohttp.web.FileResponse(index_path)
 
 
 async def album_art_handler(request):
@@ -930,27 +930,42 @@ async def _start_sinric_pro():
 
 async def start_app():
     @aiohttp.web.middleware
-    async def cache_middleware(request, handler):
-        """Add Cache-Control headers to static frontend assets."""
+    async def cache_and_header_middleware(request, handler):
         response = await handler(request)
-        if request.path.startswith('/frontend/'):
-            # Cache JS/CSS for 1 day; index.html is served separately with no-cache
-            response.headers.setdefault('Cache-Control', 'public, max-age=86400')
+
+        path = request.path
+
+        # 1. Static Assets (JS, CSS, Images in /frontend/): Cache aggressively
+        if path.startswith('/frontend/') and not path.endswith('.html'):
+            response.headers['Cache-Control'] = 'public, max-age=86400, immutable'
+
+        # 2. HTML Entry Point (index.html or root '/'): Always revalidate
+        elif path in ('/', '/index.html') or path.endswith('.html'):
+            response.headers['Cache-Control'] = 'no-cache, must-revalidate'
+            response.headers['Pragma'] = 'no-cache'
+
+        # 3. Dynamic Album Art: Revalidate so art updates instantly on track change
+        elif path == '/album-art':
+            response.headers['Cache-Control'] = 'no-cache, must-revalidate'
+
         return response
 
-    app = aiohttp.web.Application(middlewares=[cache_middleware])
+    app = aiohttp.web.Application(
+        middlewares=[cache_and_header_middleware]
+    )
+    
     global http_session
     http_session = aiohttp.ClientSession()
-
 
     base_dir = os.path.dirname(os.path.abspath(__file__))
     frontend_dir = os.path.join(base_dir, 'frontend')
 
+    # Routes
     app.router.add_get('/', index)
     app.router.add_get('/ws', websocket_handler)
     app.router.add_get('/album-art', album_art_handler)
     
-    # Mount the frontend directory to serve all static files (app.js, Vue, Tailwind, etc.)
+    # Static files handler (Handles 304 Not Modified automatically)
     if os.path.isdir(frontend_dir):
         app.router.add_static('/frontend/', path=frontend_dir, name='frontend')
     else:
